@@ -12,14 +12,18 @@ JSON/Markdown in this folder.
 Early scaffolding. Working today:
 
 - ✅ Full layered questionnaire definition — [`src/questionnaire/layers.js`](src/questionnaire/layers.js)
+- ✅ **Interview runner** (`meal init` / `meal ask <layer>`) — writes a real period's profile + targets
+- ✅ Individuals × periods plumbing (`meal who`, `meal period new`)
 - ✅ Energy & macro engine (BMR → TDEE → goal → macros, per-meal split) — [`src/engine/targets.js`](src/engine/targets.js)
-- 🚧 Recipe scraper, matcher, shopping-list builder, adaptive loop — designed in VISION.md, not built yet
+- 🚧 Recipe ingestion, the week builder, shopping-list builder, adaptive loop — designed in VISION.md, not built yet
 
-## Try the engine
+## Try it
 
 ```bash
 cd meal-planner
-node src/engine/demo.js     # prints computed targets for an example profile
+node bin/meal.js init            # run the layered interview (creates your period)
+node bin/meal.js targets         # show your computed daily/per-meal targets
+node bin/meal.js targets --example   # …or run it on the committed example profile
 ```
 
 ## Layout

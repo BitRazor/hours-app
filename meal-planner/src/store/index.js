@@ -21,7 +21,66 @@ export const paths = {
   taxonomy: resolve(root, "knowledge/taxonomy"),
   // Individuals
   individuals: resolve(root, "individuals"),
+  active: resolve(root, "individuals/.active"), // plain-text file holding the active individual id
 };
+
+/** Turn a name into a filesystem-safe id. */
+export function slug(s) {
+  return String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "me";
+}
+
+/** Read the active individual id (falls back to the committed example). */
+export async function getActiveIndividualId() {
+  try { return (await readFile(paths.active, "utf8")).trim() || "example"; }
+  catch (e) { if (e.code === "ENOENT") return "example"; throw e; }
+}
+
+export async function setActiveIndividualId(id) {
+  await mkdir(paths.individuals, { recursive: true });
+  await writeFile(paths.active, id + "\n");
+}
+
+const individualFile = (id) => resolve(paths.individuals, id, "individual.json");
+
+/** Create an individual with a first active period. Returns {id, periodId}. */
+export async function createIndividual({ id, name, unitsDefault = "metric (kg/cm)", periodLabel = "first period" }) {
+  id = slug(id || name);
+  const periodId = newPeriodId(periodLabel);
+  await writeJSON(individualFile(id), {
+    id, name: name || id, unitsDefault,
+    createdAt: today(), activePeriod: periodId,
+  });
+  await writePeriodMeta(id, periodId, { label: periodLabel, whyNew: "first period", status: "active" });
+  await setActiveIndividualId(id);
+  return { id, periodId };
+}
+
+/** Start a fresh period: archive the current one, create + activate a new one. */
+export async function startNewPeriod(individualId, { label = "new period", whyNew = "" } = {}) {
+  const ind = await readJSON(individualFile(individualId));
+  if (!ind) throw new Error(`No individual '${individualId}'`);
+  if (ind.activePeriod) {
+    const prev = await readJSON(periodFiles(individualId, ind.activePeriod).meta, {});
+    await writeJSON(periodFiles(individualId, ind.activePeriod).meta, { ...prev, status: "archived" });
+  }
+  const periodId = newPeriodId(label);
+  await writePeriodMeta(individualId, periodId, { label, whyNew, status: "active" });
+  ind.activePeriod = periodId;
+  await writeJSON(individualFile(individualId), ind);
+  return { individualId, periodId };
+}
+
+function newPeriodId(label) {
+  return `${today().slice(0, 7)}_${slug(label)}`;
+}
+
+async function writePeriodMeta(individualId, periodId, meta) {
+  await writeJSON(periodFiles(individualId, periodId).meta, {
+    id: periodId, startDate: today(), ...meta,
+  });
+}
+
+function today() { return new Date().toISOString().slice(0, 10); }
 
 /** Resolve a period directory: individuals/<individualId>/periods/<periodId>/ */
 export function periodDir(individualId, periodId) {
