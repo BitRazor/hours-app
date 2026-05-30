@@ -62,12 +62,13 @@ service of them.
 
 ### Target scope: a Full food OS (phased)
 
-The agreed outer boundary is a **personal food OS**. Beyond planning, the target
-system reasons about **ingredient substitutions** as a first-class capability (§7b),
-optimises **grocery cost**, and tracks the **essential** nutrients that matter — while
-ingesting knowledge from *any* channel we can imagine (web, APIs/datasets, PDFs,
-photo/label OCR, and whatever comes next). We **phase up** to this; the schemas and
-architecture are built for it now so nothing has to be re-architected later.
+The agreed outer boundary is a **personal food OS**. Beyond the weekly core it also
+uses **ingredient substitutions** (to hit macros/budget — §7), optimises **grocery
+cost**, and tracks the **essential** nutrients that matter — while ingesting knowledge
+from *any* channel we can imagine (web, APIs/datasets, PDFs, photo/label OCR, and
+whatever comes next). We **phase up** to this; the schemas and architecture are built
+for it now so nothing has to be re-architected later. **v1, though, is just the weekly
+core (§7).**
 
 **Explicitly out of scope** (by decision): no pantry/inventory tracking and no
 "use-up-what's-in-the-fridge" loop. Each plan and shopping list is computed **from
@@ -110,7 +111,7 @@ vs. time** is captured by the questionnaire and can differ from the next period.
             └───────────────────────────┬──────────────────────────┘
                                          │ targets.json
         recipes.jsonl ──────────────────┤
-        (built by scraper)              ▼
+        (built by ingestion)            ▼
             ┌──────────────────────────────────────────────────────┐
             │                    RECIPE MATCHER                      │
             │  hard filters → score candidates → assemble day/week   │
@@ -120,8 +121,8 @@ vs. time** is captured by the questionnaire and can differ from the next period.
                                          ▼
             ┌──────────────────────────────────────────────────────┐
             │                  SHOPPING LIST BUILDER                 │
-            │  expand × servings → unit-normalize → merge → minus    │
-            │  pantry → group by aisle → Markdown with checkboxes    │
+            │  expand × servings → unit-normalize → merge → skip     │
+            │  staples → group by aisle → Markdown w/ checkboxes      │
             └───────────────────────────┬──────────────────────────┘
                                          │ shopping.md
                                          ▼
@@ -273,23 +274,39 @@ ingredient carries:
 - **allergen tags** (for L8 hard filters),
 - **per-100g nutrition** — macros + essentials only (fibre, sodium, saturated fat,
   sugar, omega-3); used to estimate recipe nutrition when undeclared,
-- **cost** + **substitution metadata** (category, culinary role) — powering §7b.
+- **cost** + **substitution metadata** (category, culinary role) — powering §7.
 
 This catalog is what makes unit-merging, allergen filtering, nutrition estimation,
 aisle-sorting **and substitution** all possible from one place.
 
 ---
 
-## 7. The matcher (core selection algorithm)
+## 7. The week builder — **the core**
 
-**Job:** choose meals for each slot, each day, so that the daily totals land inside the
-target tolerance bands, *no* hard constraint is violated, and a weighted preference
-score is maximised — without boring you.
+This is the heart of the system; everything else exists to make it correct. The job:
+produce a **week of meals where every day hits your targets**, no hard constraint is
+ever broken, the week is varied and actually cookable in your available time — then
+hand it to the shopping-list builder.
 
-1. **Hard filters** (drop candidates that violate): allergens/restrictions (L8),
-   missing appliance (L6), over the prep-time cap (L6), contains a "never" disliked
-   ingredient (L7), out of diet style (L4).
-2. **Score each surviving candidate** for a slot:
+### What "correct" means (acceptance criteria)
+
+A weekly plan is **correct** when, for **every day**:
+- daily **kcal** is within tolerance (default **±5%**) of target;
+- **protein** is within tolerance and **never short** by more than a small margin
+  (protein is the priority macro);
+- **fat** ≥ the essential floor; **carbs** fill the remainder within tolerance;
+- **zero** hard-constraint violations — allergens, diet law (L8), "never" foods (L7),
+  missing appliance (L6), or over **that day's** prep-time cap (weekday vs weekend, L6);
+
+…and across the seven days, no recipe repeats more often than your tolerance allows
+(L7). If a day can't be satisfied, the builder **says why** (e.g. *"no breakfast under
+400 kcal with 40 g protein in the DB"*) instead of silently shipping a bad day.
+
+### How a single day is built
+
+1. **Hard-filter** candidates for each slot — drop anything that violates a constraint
+   for this day/slot (incl. that day's prep-time cap).
+2. **Score** the survivors per slot:
    ```
    score = w_macro   · macroFit        // ALWAYS ON: closeness to the slot's macro target
          + w_health  · healthQuality   // ALWAYS ON: essentials (fibre, sodium, sat-fat, omega-3), whole foods
@@ -297,41 +314,38 @@ score is maximised — without boring you.
          + w_pref    · preferenceFit   // liked ingredients / cuisines (L7)
          + w_time    · timeFit         // PER-PERIOD weight (questionnaire): faster = better
          + w_cost    · costFit         // PER-PERIOD weight (questionnaire): within budget (L9)
-         + w_learn   · learnedScore    // from feedback (prefs.json)
          − penalties(recentlyUsed, repetitionBeyondTolerance)
    ```
-   **Objective composition.** `w_macro`, `w_health` and `w_variety` are always-on
-   system defaults — the brain always wants you on-target, well-nourished and not bored.
-   `w_cost` and `w_time` are **per-period** weights set from the questionnaire (how much
-   *this* phase of your life cares about money vs. speed); they reset with a new period.
-3. **Assemble the day:** greedy pick per slot, then a small local-search pass that
-   swaps/【portion-scales】 recipes to close the remaining macro gap to the daily target.
-   Portion scaling = adjusting servings (e.g. 1.25×) to fine-tune calories/protein.
-4. **Variety + batch logic:** enforce "no repeat within N days" (L7 repeat tolerance),
-   rotate cuisines, and honour L5/L6 batch-cooking (designate cook-days, reuse a
-   batch-cooked dish across the plan's days to save time).
+   `w_macro`, `w_health`, `w_variety` are always-on; `w_cost`, `w_time` are the
+   per-period weights from the questionnaire (cost vs. speed for *this* phase).
+3. **Fill the slots** (breakfast/lunch/dinner/snacks per L5) with the best scorers.
+4. **Close the macro gap — the step that makes a day *correct*.** Compute the day's
+   running total vs. the daily target, then iterate: **portion-scale** recipes
+   (≈0.8–1.5× servings) to fine-tune calories/protein, and if a slot still fights the
+   target, **swap it** for a better-fitting candidate. Repeat until the day is inside
+   every tolerance band (or report why it can't be).
 
-**Horizon.** A plan defaults to **one week**; the questionnaire can set a different
-horizon (a single day, a few days, two weeks) and the shopping cadence follows it.
+### How the week is built
 
-### 7b. Substitution & synergy engine (a first-class capability)
+- Build **day by day**, carrying a **recently-used** set so variety holds across all
+  seven days (respect L7 repeat tolerance; rotate cuisines).
+- Respect **per-day time budgets**: weekday cap vs. weekend cap, so busy days get
+  faster meals and weekends can take longer cooks.
+- Honour **batch-cooking** (L6) when enabled: one cook-session can cover several days
+  (cook a big-batch dinner once, eat it across 2–3 days), which also saves prep time.
 
-Swapping is core, not cosmetic. Given any chosen ingredient or recipe, the engine
-proposes **substitutes that preserve what matters** while changing one axis:
-- **macro-equivalent swaps** — salmon → mackerel, rice → potato at matched protein/carb/fat;
-- **constraint swaps** — replace an allergen / disliked / out-of-season / over-budget
-  item with the nearest safe match (dairy → lactose-free, beef → turkey to cut cost/fat);
-- **availability swaps** — a missing item → the closest thing you'd realistically use.
+### Substitution — a gap-closer in service of correctness
 
-It runs in two places: **inside assembly** (to close a macro or budget gap) and **on
-demand** ("swap the salmon"). It's powered by the knowledge graph's per-ingredient
-nutrition, allergen tags and cost, plus a similarity metric (category + macro profile +
-culinary role), so a substitute is *nutritionally and culinarily* sensible — not just
-same-aisle.
+When portion-scaling and whole-recipe swaps still can't hit a day's macros or budget,
+the builder nudges **individual ingredients** via knowledge-graph swaps that preserve
+what matters (rice→potato, salmon→mackerel at matched macros; an allergen/over-budget
+item → nearest safe match). Same tool is available on demand (`meal swap`). It exists
+to make the week land on target — not as a feature for its own sake.
 
-Output → the active period's `plans/<date>.json` + a readable `plans/<date>.md`
-(see §10). The weights `w_*` start from sensible defaults and are **tunable** + later
-**learned** (see §9).
+**Output** → the active period's `plans/<range>.json` + a readable `plans/<range>.md`:
+a 7-day table showing each day's meals and **per-day macro totals vs. target**, so you
+can see at a glance that every day is on point. The weights `w_*` start from sensible
+defaults (later tunable/learned, §9).
 
 ---
 
@@ -433,7 +447,7 @@ meal-planner/
 | `meal targets` | (re)compute & show daily/per-meal targets for the active period |
 | `meal ingest --url … / --source … / --pdf … / --photo …` | feed the knowledge base |
 | `meal plan` | generate a meal plan for the period's horizon (default 1 week) |
-| `meal swap <item>` | propose substitutions for an ingredient/recipe (§7b) |
+| `meal swap <item>` | propose substitutions for an ingredient/recipe (§7) |
 | `meal shopping --plan <id>` | build the shopping list for a plan (from zero) |
 | `meal feedback …` | log a rating / weight / note → retrains this period's prefs |
 | `meal status` | weight trend vs goal, plan adherence (active period) |
@@ -453,7 +467,7 @@ don't pass IDs — you just `meal plan` and it lands in the right folder.
 2. **`meal init`** — interview runner that writes a real period's `profile.json` + `targets.json`
 3. **Ingredient knowledge graph** + unit-conversion library
 4. **Ingestion normaliser** + first adapter (web JSON-LD) → seed our diet style into `recipes.jsonl`
-5. **Matcher** → first generated week plan, with the **substitution engine (§7b)** in the loop
+5. **Matcher** → first generated week plan, with the **substitution engine (§7)** in the loop
 6. **Shopping list** builder (from zero)
 7. **Feedback + adaptive** loop (incl. adaptive TDEE)
 8. **Periods/individuals CLI** (`meal who`, `meal period new`) + more ingestion adapters (API/PDF/OCR)
@@ -474,19 +488,22 @@ What we've settled while refining the vision:
   behind one normaliser; seed our diet style first.
 - **Objective:** macro precision + health quality + variety **always-on**; **cost & time
   are per-period** questionnaire weights.
-- **Substitution (§7b):** a **first-class** capability, not a nicety.
+- **Substitution (§7):** a **first-class** capability, not a nicety.
 - **Architecture:** **multi-individual × multi-period**; new life-phase = fresh
   questionnaire, old period archived as history; files split `knowledge/` vs.
   `individuals/<id>/periods/<id>/`.
 - **Plan horizon:** default **one week**, adjustable via the questionnaire.
 
-### Still-open vision threads
+### v1 focus — keep it on the core
 
-- How aggressive should **adaptive TDEE** be (how fast does it trust your weight trend
-  over the textbook estimate)?
-- Should plans support **diet periodisation** (planned refeeds / diet-breaks / bulk→cut
-  phases *within* a period, or is that always a new period)?
-- How much should **seasonality & locale** steer choices in v1 vs. later?
+The whole v1 target is one thing done well: **a correct week of meals + its shopping
+list** (§7 is the centre of gravity). Concretely, v1 = questionnaire → daily targets →
+a 7-day plan that meets the §7 acceptance criteria → one consolidated shopping list.
+
+Advanced behaviours are **deferred, not designed further now** — adaptive TDEE (§9),
+learned preferences, diet periodisation, seasonality/locale, and the broader Full food
+OS features. The architecture already leaves room for them; we don't elaborate them
+until the weekly core is correct and useful.
 
 Everything that's a *runtime input* (units, diet style, protein basis, currency, budget,
 household size, allergies) is **not** a vision decision — it's collected by `meal init`.

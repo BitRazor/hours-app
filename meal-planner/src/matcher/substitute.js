@@ -1,5 +1,5 @@
 /**
- * Substitution & synergy engine — a first-class capability. (PLANNED — VISION.md §7b)
+ * Substitution — macro/budget gap-closer for the week builder. (PLANNED — VISION.md §7)
  *
  * Contract (to implement):
  *   substitutes(target, { catalog, constraint, n }) -> [{ canonicalId, why, deltas }]
@@ -20,5 +20,5 @@
  */
 
 export function substitutes() {
-  throw new Error("substitution engine not implemented yet — see VISION.md §7b");
+  throw new Error("substitution engine not implemented yet — see VISION.md §7");
 }
