@@ -9,7 +9,7 @@
   },
   "scripts": {
     "meal": "node bin/meal.js",
-    "scrape": "node src/scraper/index.js",
+    "ingest": "node src/ingest/index.js",
     "demo:targets": "node src/engine/demo.js"
   },
   "engines": {

@@ -25,22 +25,27 @@ node src/engine/demo.js     # prints computed targets for an example profile
 ## Layout
 
 ```
-bin/meal.js     CLI entry (planned commands)
+bin/meal.js          CLI entry (planned commands)
 src/
-  questionnaire/  layer definitions + interview runner
-  engine/         calorie/macro math  ← working
-  matcher/        recipe selection (planned)
-  shopping/       list builder (planned)
-  scraper/        recipe import (planned)
-  store/          file helpers
-data/
-  profile/        your answers, targets, feedback, learned prefs
-  recipes/        recipe DB + cached sources
-  units/          ingredient catalog (aisle, units, allergens, macros)
-out/              generated plans & shopping lists
+  questionnaire/       layer definitions + interview runner
+  engine/              calorie/macro math  ← working
+  matcher/             recipe selection (planned)
+  shopping/            list builder (planned)
+  ingest/              knowledge ingestion: web/api/pdf/ocr (planned)
+  store/               file helpers
+knowledge/           ← shared "food brain" (individual-agnostic)
+  recipes/             recipe DB + schema + cached sources
+  ingredients/         food knowledge graph (macros+micros, price, subs, allergens)
+  taxonomy/            canonical vocab (cuisines, aisles, diet flags)
+individuals/         ← everything personal, per individual / per period
+  <id>/individual.json
+  <id>/periods/<period>/   profile · targets · prefs · feedback · plans/ · shopping/
 ```
+
+See [`VISION.md` §10](VISION.md) for why personal data is split per individual / per period.
 
 ## Privacy
 
-Everything stays local. `data/profile/` (your personal numbers) and `out/` are
-git-ignored by default — see [`.gitignore`](.gitignore).
+Everything stays local. Real individuals under `individuals/` are git-ignored; only the
+committed `example` individual is tracked so the structure is visible — see
+[`.gitignore`](.gitignore).

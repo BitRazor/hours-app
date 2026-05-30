@@ -1,18 +1,13 @@
 node_modules/
 
-# Personal data stays on your machine — keep examples, ignore the real thing.
-data/profile/profile.json
-data/profile/targets.json
-data/profile/feedback.jsonl
-data/profile/prefs.json
+# Personal data stays local. Keep the committed "example" individual so the
+# folder structure is visible; ignore every real individual's data.
+individuals/*
+!individuals/example/
 
-# Cached scraped payloads and generated output.
-data/recipes/sources/*
-!data/recipes/sources/.gitkeep
-out/plans/*
-out/shopping/*
-!out/plans/.gitkeep
-!out/shopping/.gitkeep
+# Cached raw ingestion payloads (can be large / re-fetchable).
+knowledge/recipes/sources/*
+!knowledge/recipes/sources/.gitkeep
 
 # OS / editor noise
 .DS_Store

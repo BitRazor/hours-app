@@ -3,41 +3,36 @@
  * `meal` — CLI entry point.
  *
  * Working today:
- *   meal targets            compute & print targets from data/profile/profile.json
- *   meal targets --example  compute from the example profile (no profile.json needed)
+ *   meal targets            compute targets for the active individual+period
+ *   meal targets --example  compute from the committed example period
  *   meal help               this help
  *
- * Planned (see VISION.md §11): init, ask, scrape, plan, shopping, feedback, status.
+ * Planned (see VISION.md §11): who, period, init, ask, ingest, plan, shopping,
+ * feedback, status.
  */
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import { computeTargets } from "../src/engine/targets.js";
+import { activePeriod, readJSON } from "../src/store/index.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, "..");
 const [, , cmd, ...args] = process.argv;
 
 async function loadProfile(useExample) {
-  const path = resolve(root, "data/profile", useExample ? "profile.example.json" : "profile.json");
-  try {
-    return JSON.parse(await readFile(path, "utf8"));
-  } catch (e) {
-    if (e.code === "ENOENT" && !useExample) {
-      console.error("No data/profile/profile.json yet. Run `meal init` (coming soon),\n" +
-        "or try `meal targets --example` to see it work on the sample profile.");
-      process.exit(1);
-    }
-    throw e;
+  const individualId = useExample ? "example" : "example"; // TODO: a real active-individual pointer
+  const { files, periodId } = await activePeriod(individualId);
+  const profile = await readJSON(files.profile);
+  if (!profile) {
+    console.error(`No profile.json in period '${periodId}'. Run \`meal init\` (coming soon),\n` +
+      "or try `meal targets --example` to see it work on the committed example.");
+    process.exit(1);
   }
+  return profile;
 }
 
 const HELP = `meal — personal meal & shopping intelligence
 
-  meal targets [--example]   compute calorie & macro targets
+  meal targets [--example]   compute calorie & macro targets (active period)
   meal help                  show this help
 
-Planned: init, ask <layer>, scrape, plan, shopping, feedback, status.
+Planned: who, period, init, ask <layer>, ingest, plan, shopping, feedback, status.
 See VISION.md for the full design.`;
 
 switch (cmd) {
