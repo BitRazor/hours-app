@@ -1,0 +1,62 @@
+{
+  "_about": "Ingredient catalog — single source of truth for unit conversion, aisle sorting, allergen filtering, and macro estimation. canonicalId is the merge key used across recipes & shopping lists. macrosPer100g is used to ESTIMATE recipe nutrition when a source doesn't declare it. This is a seed; the scraper and we will grow it.",
+  "_schema": {
+    "canonicalId": "string key",
+    "aliases": "names that map to this id",
+    "aisle": "produce|meat|seafood|dairy|bakery|pantry|frozen|spices|other",
+    "allergens": "list, e.g. [milk, gluten, nuts, soy, egg, fish, shellfish]",
+    "units": "conversions to grams for common measures",
+    "macrosPer100g": "{kcal, protein_g, fat_g, carb_g, fiber_g}"
+  },
+  "ingredients": [
+    {
+      "canonicalId": "chicken_breast",
+      "aliases": ["chicken breast", "chicken breasts", "boneless skinless chicken breast"],
+      "aisle": "meat", "allergens": [],
+      "units": { "g": 1, "oz": 28.35, "breast": 174 },
+      "macrosPer100g": { "kcal": 165, "protein_g": 31, "fat_g": 3.6, "carb_g": 0, "fiber_g": 0 }
+    },
+    {
+      "canonicalId": "broccoli",
+      "aliases": ["broccoli", "broccoli florets"],
+      "aisle": "produce", "allergens": [],
+      "units": { "g": 1, "cup": 91, "head": 600 },
+      "macrosPer100g": { "kcal": 34, "protein_g": 2.8, "fat_g": 0.4, "carb_g": 7, "fiber_g": 2.6 }
+    },
+    {
+      "canonicalId": "olive_oil",
+      "aliases": ["olive oil", "extra virgin olive oil", "evoo"],
+      "aisle": "pantry", "allergens": [],
+      "units": { "g": 1, "ml": 0.92, "tbsp": 13.5, "tsp": 4.5 },
+      "macrosPer100g": { "kcal": 884, "protein_g": 0, "fat_g": 100, "carb_g": 0, "fiber_g": 0 }
+    },
+    {
+      "canonicalId": "rolled_oats",
+      "aliases": ["oats", "rolled oats", "porridge oats", "old-fashioned oats"],
+      "aisle": "pantry", "allergens": ["gluten"],
+      "units": { "g": 1, "cup": 90, "tbsp": 6 },
+      "macrosPer100g": { "kcal": 389, "protein_g": 16.9, "fat_g": 6.9, "carb_g": 66, "fiber_g": 10.6 }
+    },
+    {
+      "canonicalId": "egg",
+      "aliases": ["egg", "eggs", "large egg"],
+      "aisle": "dairy", "allergens": ["egg"],
+      "units": { "g": 1, "egg": 50, "large": 50 },
+      "macrosPer100g": { "kcal": 143, "protein_g": 12.6, "fat_g": 9.5, "carb_g": 0.7, "fiber_g": 0 }
+    },
+    {
+      "canonicalId": "greek_yogurt",
+      "aliases": ["greek yogurt", "greek yoghurt", "plain greek yogurt"],
+      "aisle": "dairy", "allergens": ["milk"],
+      "units": { "g": 1, "cup": 245, "tbsp": 15 },
+      "macrosPer100g": { "kcal": 59, "protein_g": 10, "fat_g": 0.4, "carb_g": 3.6, "fiber_g": 0 }
+    },
+    {
+      "canonicalId": "white_rice",
+      "aliases": ["rice", "white rice", "long grain rice"],
+      "aisle": "pantry", "allergens": [],
+      "units": { "g": 1, "cup": 185 },
+      "macrosPer100g": { "kcal": 360, "protein_g": 6.6, "fat_g": 0.6, "carb_g": 79, "fiber_g": 1.3 }
+    }
+  ]
+}

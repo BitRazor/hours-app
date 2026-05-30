@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Recipe",
+  "description": "One normalised recipe record. recipes.jsonl holds one of these per line.",
+  "type": "object",
+  "required": ["id", "title", "servings", "ingredients", "nutritionPerServing"],
+  "properties": {
+    "id": { "type": "string", "description": "stable internal id, e.g. r_0001" },
+    "title": { "type": "string" },
+    "source": { "type": "string", "description": "domain or dataset name" },
+    "sourceUrl": { "type": "string" },
+    "license": { "type": "string", "description": "license / usage note for the source" },
+    "cuisine": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "dietFlags": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["vegetarian", "vegan", "pescatarian", "gluten-free", "dairy-free", "nut-free", "halal", "kosher", "low-carb", "keto", "low-FODMAP"] }
+    },
+    "servings": { "type": "integer", "minimum": 1 },
+    "prepMin": { "type": "integer" },
+    "cookMin": { "type": "integer" },
+    "totalMin": { "type": "integer" },
+    "skill": { "type": "string", "enum": ["easy", "medium", "advanced"] },
+    "appliances": { "type": "array", "items": { "type": "string" } },
+    "ingredients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "qty", "unit"],
+        "properties": {
+          "name": { "type": "string", "description": "as written in the recipe" },
+          "canonicalId": { "type": "string", "description": "key into the ingredient catalog" },
+          "qty": { "type": "number" },
+          "unit": { "type": "string" },
+          "note": { "type": "string" },
+          "optional": { "type": "boolean" }
+        }
+      }
+    },
+    "steps": { "type": "array", "items": { "type": "string" } },
+    "nutritionPerServing": {
+      "type": "object",
+      "required": ["kcal", "protein_g", "fat_g", "carb_g"],
+      "properties": {
+        "kcal": { "type": "number" },
+        "protein_g": { "type": "number" },
+        "fat_g": { "type": "number" },
+        "carb_g": { "type": "number" },
+        "fiber_g": { "type": "number" },
+        "sugar_g": { "type": "number" },
+        "sodium_mg": { "type": "number" },
+        "basis": { "type": "string", "enum": ["declared", "estimated"], "description": "was nutrition given by the source or estimated from ingredients" }
+      }
+    },
+    "costEstimate": {
+      "type": "object",
+      "properties": { "amount": { "type": "number" }, "currency": { "type": "string" } }
+    },
+    "repeatability": { "type": "string", "enum": ["daily", "weekly", "occasional"] },
+    "season": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "_about": "Example of the answers `meal init` produces. Your real answers go in profile.json (git-ignored). Each layer key matches src/questionnaire/layers.js.",
+  "body": { "units": "metric (kg/cm)", "sex": "male", "age": 32, "height": 180, "weight": 82, "bodyFatPct": 18 },
+  "activity": { "baseline": "light (some walking, on feet sometimes)", "trainingType": ["weights/strength"], "trainingDays": 4, "trainingMinutes": 60, "intensity": "hard" },
+  "goals": { "primary": "lose fat", "targetWeight": 76, "rate": "moderate", "performance": ["get stronger"] },
+  "macros": { "dietStyle": "high-protein", "proteinBasis": "g per kg bodyweight", "proteinLevel": "high (~2.0 g/kg)", "fatFloor": "moderate (~0.8 g/kg)", "fiberTarget": "high" },
+  "meals": { "mealsPerDay": 3, "snacksPerDay": 1, "fasting": "no restriction", "distribution": "even across meals" },
+  "time": { "weekdayPrepCap": 30, "weekendPrepCap": 60, "skill": "comfortable", "batchCook": true, "appliances": ["oven", "stovetop", "air fryer", "blender"] },
+  "tastes": { "likedIngredients": ["chicken", "eggs", "rice", "greek yogurt"], "dislikedIngredients": ["liver"], "neverIngredients": [], "cuisines": ["mediterranean", "japanese", "mexican"], "spice": "medium", "repeatTolerance": "twice a week ok" },
+  "restrictions": { "allergies": [], "dietLaw": ["none"], "medical": ["none"] },
+  "budget": { "currency": "EUR", "weeklyBudget": 70, "pantryStaples": ["salt", "pepper", "olive oil", "water"], "stores": [], "preferences": ["minimise food waste"] },
+  "logistics": { "servings": 1, "shopEveryDays": 7, "freezerSpace": "some", "listUnits": "metric" }
+}

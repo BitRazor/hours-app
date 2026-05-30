@@ -1,0 +1,19 @@
+{
+  "name": "meal-planner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal, file-based meal & shopping intelligence: questionnaire -> macro targets -> meal plan -> shopping list, adaptive over time.",
+  "bin": {
+    "meal": "bin/meal.js"
+  },
+  "scripts": {
+    "meal": "node bin/meal.js",
+    "scrape": "node src/scraper/index.js",
+    "demo:targets": "node src/engine/demo.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
