@@ -39,10 +39,12 @@ trend, then re-weights future choices.
 ### The five pillars (this is the vision)
 
 1. **Food & recipe knowledge base — "big data".** A comprehensive, ever-growing,
-   multi-source **food knowledge graph**: recipes + a deep ingredient layer (full
-   macros **+ micronutrients**, cost, substitutions, seasonality, allergens), designed
-   to serve *any* diet, goal, restriction or cuisine. Source-agnostic, deduplicated,
-   with provenance and a canonical taxonomy. (§5, §6)
+   multi-source **food knowledge graph**: recipes + a deep ingredient layer (macros +
+   a curated set of **essential** nutrients — fibre, sodium, saturated fat, sugar,
+   omega-3 — plus cost, substitutions, seasonality, allergens). *No full RDA / vitamin
+   panel* — just the macros and essentials that matter. Designed to serve *any* diet,
+   goal, restriction or cuisine; source-agnostic, deduplicated, with provenance and a
+   canonical taxonomy. (§5, §6)
 2. **Ingestion & document handling.** Engines that pull knowledge in from anywhere —
    web pages, recipe APIs/datasets, PDFs, photos of recipes or nutrition labels, your
    own written notes — normalise it and merge it into the knowledge base. (§5)
@@ -61,11 +63,16 @@ service of them.
 ### Target scope: a Full food OS (phased)
 
 The agreed outer boundary is a **personal food OS**. Beyond planning, the target
-system also tracks your **pantry/inventory**, manages **leftovers & food waste**,
-optimises **grocery cost**, and reasons about **micronutrients** — ingesting knowledge
-from *any* channel we can imagine (web, APIs/datasets, PDFs, photo/label OCR, and
-whatever comes next). We **phase up** to this; the schemas and architecture are built
-for it now so nothing has to be re-architected later.
+system reasons about **ingredient substitutions** as a first-class capability (§7b),
+optimises **grocery cost**, and tracks the **essential** nutrients that matter — while
+ingesting knowledge from *any* channel we can imagine (web, APIs/datasets, PDFs,
+photo/label OCR, and whatever comes next). We **phase up** to this; the schemas and
+architecture are built for it now so nothing has to be re-architected later.
+
+**Explicitly out of scope** (by decision): no pantry/inventory tracking and no
+"use-up-what's-in-the-fridge" loop. Each plan and shopping list is computed **from
+zero** — you buy what the plan needs. (A static "staples I always own" skip-list stays
+available as a questionnaire convenience, but the system never models a live inventory.)
 
 ### Individuals & periods (a core architecture decision)
 
@@ -216,9 +223,9 @@ web pages (schema.org `Recipe` JSON-LD), open recipe **APIs/datasets**, **PDFs**
 adapter's only job is "raw source → common intermediate shape"; the normaliser does
 the rest.
 
-We build the corpus with a **standalone import/scrape script** (`npm run scrape`) —
+We build the corpus with a **standalone ingestion script** (`npm run ingest`) —
 run manually, never inside the runtime — that writes normalised records into
-`data/recipes/recipes.jsonl` (one JSON per line, git-friendly, append-only).
+`knowledge/recipes/recipes.jsonl` (one JSON per line, git-friendly, append-only).
 
 **Approach:**
 - Primary signal: most recipe pages embed **schema.org `Recipe` JSON-LD**. We parse
@@ -228,10 +235,10 @@ run manually, never inside the runtime — that writes normalised records into
   ingredients via the ingredient catalog (see §6) and a nutrition reference
   (e.g. Open Food Facts). Every record records whether macros are `declared` or `estimated`.
 - **Hygiene:** respect `robots.txt`, rate-limit, cache raw payloads in
-  `data/recipes/sources/`, dedupe by content hash, record `source` + `sourceUrl` +
-  license note. Modes: `--url <page>`, `--seed <file-of-urls>`.
+  `knowledge/recipes/sources/`, dedupe by content hash, record `source` + `sourceUrl` +
+  license note. Modes: `--url <page>`, `--source <name>`, `--pdf <file>`, `--photo <file>`.
 
-**Recipe schema** (see [`data/recipes/recipe.schema.json`](data/recipes/recipe.schema.json)):
+**Recipe schema** (see [`knowledge/recipes/recipe.schema.json`](knowledge/recipes/recipe.schema.json)):
 ```json
 {
   "id": "r_0001",
@@ -254,19 +261,22 @@ run manually, never inside the runtime — that writes normalised records into
 
 ---
 
-## 6. Ingredient catalog (the glue)
+## 6. Ingredient catalog / knowledge graph (the glue)
 
 A single source of truth for ingredients in
-[`data/units/ingredients.json`](data/units/ingredients.json). Each ingredient carries:
+[`knowledge/ingredients/ingredients.json`](knowledge/ingredients/ingredients.json). Each
+ingredient carries:
 - **canonicalId** + aliases (so "chicken breast", "chicken breasts", "boneless skinless
   chicken breast" all merge),
 - **aisle / category** (produce, meat, dairy, pantry, frozen…) — for shopping-list sorting,
 - **unit conversions** (g↔ml density, "1 cup", "1 tbsp", "1 medium onion" → grams),
 - **allergen tags** (for L8 hard filters),
-- **per-100g macros** (for estimating recipe nutrition when undeclared).
+- **per-100g nutrition** — macros + essentials only (fibre, sodium, saturated fat,
+  sugar, omega-3); used to estimate recipe nutrition when undeclared,
+- **cost** + **substitution metadata** (category, culinary role) — powering §7b.
 
-This catalog is what makes unit-merging, allergen filtering, macro estimation, and
-aisle-sorting all possible from one place.
+This catalog is what makes unit-merging, allergen filtering, nutrition estimation,
+aisle-sorting **and substitution** all possible from one place.
 
 ---
 
@@ -282,7 +292,7 @@ score is maximised — without boring you.
 2. **Score each surviving candidate** for a slot:
    ```
    score = w_macro   · macroFit        // ALWAYS ON: closeness to the slot's macro target
-         + w_health  · healthQuality   // ALWAYS ON: micronutrient density, fibre, whole foods
+         + w_health  · healthQuality   // ALWAYS ON: essentials (fibre, sodium, sat-fat, omega-3), whole foods
          + w_variety · varietyBonus    // ALWAYS ON: unlike what's recently been eaten
          + w_pref    · preferenceFit   // liked ingredients / cuisines (L7)
          + w_time    · timeFit         // PER-PERIOD weight (questionnaire): faster = better
@@ -298,26 +308,44 @@ score is maximised — without boring you.
    swaps/【portion-scales】 recipes to close the remaining macro gap to the daily target.
    Portion scaling = adjusting servings (e.g. 1.25×) to fine-tune calories/protein.
 4. **Variety + batch logic:** enforce "no repeat within N days" (L7 repeat tolerance),
-   rotate cuisines, and honour L5/L6 batch-cooking (designate cook-days, reuse leftovers
-   across days to save time).
+   rotate cuisines, and honour L5/L6 batch-cooking (designate cook-days, reuse a
+   batch-cooked dish across the plan's days to save time).
 
-Output → `out/plans/<date>.json` + a readable `out/plans/<date>.md`.
+**Horizon.** A plan defaults to **one week**; the questionnaire can set a different
+horizon (a single day, a few days, two weeks) and the shopping cadence follows it.
 
-The weights `w_*` start from sensible defaults and are **tunable** + later **learned**
-(see §9).
+### 7b. Substitution & synergy engine (a first-class capability)
+
+Swapping is core, not cosmetic. Given any chosen ingredient or recipe, the engine
+proposes **substitutes that preserve what matters** while changing one axis:
+- **macro-equivalent swaps** — salmon → mackerel, rice → potato at matched protein/carb/fat;
+- **constraint swaps** — replace an allergen / disliked / out-of-season / over-budget
+  item with the nearest safe match (dairy → lactose-free, beef → turkey to cut cost/fat);
+- **availability swaps** — a missing item → the closest thing you'd realistically use.
+
+It runs in two places: **inside assembly** (to close a macro or budget gap) and **on
+demand** ("swap the salmon"). It's powered by the knowledge graph's per-ingredient
+nutrition, allergen tags and cost, plus a similarity metric (category + macro profile +
+culinary role), so a substitute is *nutritionally and culinarily* sensible — not just
+same-aisle.
+
+Output → the active period's `plans/<date>.json` + a readable `plans/<date>.md`
+(see §10). The weights `w_*` start from sensible defaults and are **tunable** + later
+**learned** (see §9).
 
 ---
 
 ## 8. Shopping list builder
 
-Given a chosen plan:
+Computed **from zero** — no inventory is assumed. Given a chosen plan:
 1. **Expand** every recipe's ingredients × the servings you'll actually make.
 2. **Normalise units** to a canonical unit per ingredient (via the catalog).
 3. **Merge** identical `canonicalId`s across all meals into one line.
-4. **Subtract pantry staples** you already own (L9).
+4. **Skip the always-own staples** (the static L9 list — salt, oil, etc.); everything
+   else is on the list, because we don't track a live pantry.
 5. **Group by aisle** and sort by typical store layout.
 6. **Render Markdown** with checkboxes, quantities, per-line + total estimated cost,
-   and a "make this week" recipe list. → `out/shopping/<range>.md`.
+   and a "make this week" recipe list. → the active period's `shopping/<range>.md` (§10).
 
 ---
 
@@ -325,10 +353,10 @@ Given a chosen plan:
 
 This is what makes it *yours* instead of a generic calculator.
 
-- **Feedback events** append to `data/profile/feedback.jsonl`:
+- **Feedback events** append to the active period's `feedback.jsonl`:
   `rating (1–5)`, `cooked? y/n`, `portion too much/too little`, `make again`,
   `weight log`, `energy/satiety`.
-- **Learned preferences** live in `data/profile/prefs.json`:
+- **Learned preferences** live in the active period's `prefs.json`:
   per-ingredient, per-cuisine, per-recipe weights updated by a simple online rule
   (exponential moving average). Optionally an **ε-greedy bandit** so the matcher keeps
   exploring *new* recipes instead of locking onto your top 5.
@@ -404,8 +432,9 @@ meal-planner/
 | `meal ask <layer>` | (re)answer one layer, e.g. `meal ask activity` |
 | `meal targets` | (re)compute & show daily/per-meal targets for the active period |
 | `meal ingest --url … / --source … / --pdf … / --photo …` | feed the knowledge base |
-| `meal plan --days 7` | generate a meal plan (filed under the active period) |
-| `meal shopping --plan <id>` | build the shopping list for a plan |
+| `meal plan` | generate a meal plan for the period's horizon (default 1 week) |
+| `meal swap <item>` | propose substitutions for an ingredient/recipe (§7b) |
+| `meal shopping --plan <id>` | build the shopping list for a plan (from zero) |
 | `meal feedback …` | log a rating / weight / note → retrains this period's prefs |
 | `meal status` | weight trend vs goal, plan adherence (active period) |
 
@@ -419,33 +448,45 @@ don't pass IDs — you just `meal plan` and it lands in the right folder.
 
 ## 12. Build order (proposed)
 
-1. **★ Vision (this doc) + skeleton + questionnaire layer definitions** ← we are here
-2. Energy & macro **engine** (`targets.json`) — small, verifiable, satisfying first win
-3. **Ingredient catalog** seed + unit-conversion library
-4. **Scraper** → a real `recipes.jsonl` of a few hundred recipes
-5. **Matcher** → first generated plan
-6. **Shopping list** builder
-7. **Feedback + adaptive** loop
+1. **★ Vision (this doc) + skeleton + questionnaire definitions + macro engine** ← here
+   (engine works & is verifiable; individuals/periods scaffolding in place)
+2. **`meal init`** — interview runner that writes a real period's `profile.json` + `targets.json`
+3. **Ingredient knowledge graph** + unit-conversion library
+4. **Ingestion normaliser** + first adapter (web JSON-LD) → seed our diet style into `recipes.jsonl`
+5. **Matcher** → first generated week plan, with the **substitution engine (§7b)** in the loop
+6. **Shopping list** builder (from zero)
+7. **Feedback + adaptive** loop (incl. adaptive TDEE)
+8. **Periods/individuals CLI** (`meal who`, `meal period new`) + more ingestion adapters (API/PDF/OCR)
 
 Each step produces something usable on its own.
 
 ---
 
-## 13. Open questions to refine (your call)
+## 13. Vision decisions locked (so far)
 
-These are the decisions that meaningfully change the build. We'll work through them:
+What we've settled while refining the vision:
 
-1. **Units:** metric (kg/cm/g) or imperial (lb/in/oz) as your primary? (We can store
-   both, but the interview and lists default to one.)
-2. **Diet style** for L4: any hard preference up front (balanced / high-protein /
-   Mediterranean / low-carb / plant-forward / none-just-hit-macros)?
-3. **Protein basis:** target by g/kg bodyweight (simple) or g/kg lean mass (needs
-   body-fat %)?
-4. **Recipe sources:** any sites/cuisines you specifically want the scraper to target,
-   or anything to avoid?
-5. **Currency & budget:** which currency, and is there a weekly food budget to respect?
-6. **Household size:** cooking for just you, or portions for more people?
-7. **Allergies / hard no-go foods:** anything that must *never* appear?
+- **Outer scope:** a personal **Full food OS**, phased — *no* pantry/inventory or
+  food-waste loop; shopping is computed **from zero**.
+- **Knowledge base:** a full **food knowledge graph**; nutrition = **macros + essentials
+  only** (fibre, sodium, sat-fat, sugar, omega-3), **no full RDA**.
+- **Ingestion:** universal-but-phased — *many* pluggable adapters (web/API/PDF/OCR/…)
+  behind one normaliser; seed our diet style first.
+- **Objective:** macro precision + health quality + variety **always-on**; **cost & time
+  are per-period** questionnaire weights.
+- **Substitution (§7b):** a **first-class** capability, not a nicety.
+- **Architecture:** **multi-individual × multi-period**; new life-phase = fresh
+  questionnaire, old period archived as history; files split `knowledge/` vs.
+  `individuals/<id>/periods/<id>/`.
+- **Plan horizon:** default **one week**, adjustable via the questionnaire.
 
-Answer as many as you like now; anything unanswered just becomes a question during
-`meal init` later.
+### Still-open vision threads
+
+- How aggressive should **adaptive TDEE** be (how fast does it trust your weight trend
+  over the textbook estimate)?
+- Should plans support **diet periodisation** (planned refeeds / diet-breaks / bulk→cut
+  phases *within* a period, or is that always a new period)?
+- How much should **seasonality & locale** steer choices in v1 vs. later?
+
+Everything that's a *runtime input* (units, diet style, protein basis, currency, budget,
+household size, allergies) is **not** a vision decision — it's collected by `meal init`.

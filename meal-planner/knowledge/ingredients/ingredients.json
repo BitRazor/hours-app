@@ -1,12 +1,14 @@
 {
-  "_about": "Ingredient catalog — single source of truth for unit conversion, aisle sorting, allergen filtering, and macro estimation. canonicalId is the merge key used across recipes & shopping lists. macrosPer100g is used to ESTIMATE recipe nutrition when a source doesn't declare it. This is a seed; the scraper and we will grow it.",
+  "_about": "Ingredient catalog / knowledge graph — single source of truth for unit conversion, aisle sorting, allergen filtering, nutrition estimation, cost and substitution (§7b). canonicalId is the merge key used across recipes & shopping lists. This is a seed; ingestion and we will grow it.",
   "_schema": {
     "canonicalId": "string key",
     "aliases": "names that map to this id",
     "aisle": "produce|meat|seafood|dairy|bakery|pantry|frozen|spices|other",
     "allergens": "list, e.g. [milk, gluten, nuts, soy, egg, fish, shellfish]",
     "units": "conversions to grams for common measures",
-    "macrosPer100g": "{kcal, protein_g, fat_g, carb_g, fiber_g}"
+    "macrosPer100g": "macros + essentials only (kcal, protein_g, fat_g, carb_g, fiber_g, satFat_g, sodium_mg, omega3_g) — no full RDA",
+    "costPer100g": "{amount, currency} — for cost optimisation & substitution (added as data grows)",
+    "subRole": "culinary role for substitution (e.g. lean-protein, grain, leafy-green) — powers §7b swaps"
   },
   "ingredients": [
     {
