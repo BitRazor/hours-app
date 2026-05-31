@@ -1,0 +1,8 @@
+{
+  "_about": "Identity-level constants for an individual. Periods (under periods/) hold everything that changes over time. This 'example' individual is committed so the folder structure is visible; real individuals are git-ignored.",
+  "id": "example",
+  "name": "Example Person",
+  "unitsDefault": "metric (kg/cm)",
+  "createdAt": "2026-05-30",
+  "activePeriod": "2026-05_fatloss"
+}

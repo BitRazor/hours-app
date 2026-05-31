@@ -1,0 +1,13 @@
+{
+  "_about": "Metadata for one life-phase. A new period = a fresh questionnaire run; the old period is archived (status: archived), never overwritten. profile.json/targets.json/prefs.json/feedback.jsonl and plans|shopping/ all belong to THIS period.",
+  "id": "2026-05_fatloss",
+  "label": "Fat-loss block",
+  "startDate": "2026-05-30",
+  "status": "active",
+  "whyNew": "first period",
+  "periodPriorities": {
+    "_note": "Per-period objective weights set from the questionnaire (cost vs. time). Macro precision + health quality are always-on system defaults and are not listed here.",
+    "cost": 0.5,
+    "time": 0.5
+  }
+}
