@@ -28,3 +28,7 @@ The score multiplies **habitat** (elevation, slope, land share), **evidence** (a
 Limits: sightings follow where people are, lakes aren't masked, and the index is relative, not a probability.
 
 Attribution: © Kartverket, Mapzen/AWS Terrain Tiles, Esri World Imagery, GBIF.org.
+
+## Works offline from outside map servers
+
+The page ships its own terrain tiles (`data/dem`, terrarium zoom 5–9) and a place-name list (`data/places.json`, ~28k names from Kartverket stedsnavn). The base map is coloured from the terrain in the browser. When Kartverket, Esri, AWS terrain or the stedsnavn API are reachable, the app switches to them automatically.

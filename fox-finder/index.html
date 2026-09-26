@@ -181,10 +181,12 @@ svg.chart{width:100%;display:block}
   .maplibregl-ctrl-bottom-right{top:190px;bottom:auto}
   .maplibregl-ctrl-bottom-left{bottom:120px}
 }
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:max-content;max-width:min(440px,calc(100vw - 32px));background:#1b2230;color:#f3f5f8;border:1px solid #f07a2b;border-radius:10px;padding:10px 14px;font:500 13px/1.4 Inter,system-ui,sans-serif;z-index:50;box-shadow:0 8px 24px rgb(0 0 0/.35)}
 </style>
 </head>
 <body>
 <div id="map" aria-label="Map of Vestlandet with fox chance overlay"></div>
+<div id="toast" role="status" hidden></div>
 <div id="loading"><div>Loading fox data…</div></div>
 
 <aside id="panel" class="glass">
@@ -274,9 +276,10 @@ svg.chart{width:100%;display:block}
     <label><input type="checkbox" id="lArctic" checked><span class="sw" style="background:#b18cff"></span>Arctic fox zones</label>
     <h4 style="margin-top:8px">Base map</h4>
     <select id="base" aria-label="Base map">
-      <option value="grey">Kartverket grey</option>
-      <option value="topo">Kartverket topo</option>
-      <option value="sat">Satellite</option>
+      <option value="local">Built-in terrain</option>
+      <option value="grey" disabled>Kartverket grey (checking…)</option>
+      <option value="topo" disabled>Kartverket topo (checking…)</option>
+      <option value="sat" disabled>Satellite (checking…)</option>
     </select>
     <label style="margin-top:6px"><span style="flex:1;color:var(--muted)">Heatmap opacity</span></label>
     <input type="range" id="opacity" min="0.2" max="1" step="0.05" value="0.8" style="width:100%;accent-color:var(--fox)">
@@ -329,6 +332,8 @@ const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
 
 // ---------- theme ----------
 const store = { get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch(e){} } };
+let toastT = null;
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 6000); }
 function isDark(){ const t = document.documentElement.dataset.theme; return t ? t === 'dark' : !matchMedia('(prefers-color-scheme: light)').matches; }
 const savedTheme = store.get('ff-theme'); if (savedTheme) document.documentElement.dataset.theme = savedTheme;
 $('#themeBtn').onclick = () => { const t = isDark() ? 'light' : 'dark'; document.documentElement.dataset.theme = t; store.set('ff-theme', t); applyBasemapLook(); drawCharts(); };
@@ -387,7 +392,7 @@ function buildChanceImage(){
     const c = colorFor(s); d.set(c, i*4);
   }
   ctx.putImageData(img, 0, 0);
-  return chanceCanvas.toDataURL();
+  return localImage('chance', chanceCanvas);
 }
 function buildZeroImage(){
   const K = 4, { ncols, nrows } = META, W = ncols*K, H = nrows*K;
@@ -407,7 +412,7 @@ function buildZeroImage(){
     }
   }
   ctx.putImageData(img, 0, 0);
-  return zeroCanvas.toDataURL();
+  return localImage('zero', zeroCanvas);
 }
 function columnsGeoJSON(){
   const B = 3, feats = [], { ncols, nrows } = META, off = (state.month-1)*N;
@@ -428,8 +433,66 @@ function columnsGeoJSON(){
   return { type:'FeatureCollection', features: feats };
 }
 
+// ---------- built-in tiles (work with no outside servers) ----------
+// Terrain comes from data/dem (terrarium PNGs, zoom 5-9). The base map is coloured
+// from the same elevation tiles in the browser, so the app runs even where outside
+// map servers are blocked. If Kartverket is reachable we switch to its maps.
+const localImgs = {}; let imgRev = 0;
+function localImage(key, canvas){ localImgs[key] = canvas; return `fox://img/${key}/${++imgRev}`; }
+function canvasBuf(c){
+  if (c.convertToBlob) return c.convertToBlob({ type:'image/png' }).then(b => b.arrayBuffer());
+  return new Promise(res => c.toBlob(b => res(b.arrayBuffer()), 'image/png')).then(x => x);
+}
+function makeCanvas(w, h){
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
+  const c = document.createElement('canvas'); c.width = w; c.height = h; return c;
+}
+let seaDem = null;
+function seaDemTile(){ // flat tile at -50 m, used outside the bundled area
+  if (!seaDem){ const c = makeCanvas(256, 256), g = c.getContext('2d'); g.fillStyle = 'rgb(127,206,0)'; g.fillRect(0, 0, 256, 256); seaDem = canvasBuf(c); }
+  return seaDem.then(b => b.slice(0));
+}
+async function demBuf(z, x, y, signal){
+  try { const r = await fetch(`data/dem/${z}/${x}/${y}.png`, { signal }); if (r.ok) return await r.arrayBuffer(); } catch(e){ if (signal && signal.aborted) throw e; }
+  return seaDemTile();
+}
+const HYPSO = [[-400,120,160,190],[-40,150,184,206],[0,168,198,214],[1,198,214,178],[150,180,204,160],[400,160,188,142],[700,184,190,150],[1000,204,197,172],[1300,218,212,200],[1600,236,236,236],[1700,250,252,255]];
+function hypso(e){
+  if (e <= HYPSO[0][0]) return HYPSO[0];
+  for (let i = 1; i < HYPSO.length; i++){
+    const b = HYPSO[i]; if (e > b[0]) continue;
+    const a = HYPSO[i-1], t = (e - a[0]) / (b[0] - a[0] || 1);
+    return [0, a[1] + (b[1]-a[1])*t, a[2] + (b[2]-a[2])*t, a[3] + (b[3]-a[3])*t];
+  }
+  return HYPSO[HYPSO.length-1];
+}
+async function baseTile(z, x, y, signal){
+  const buf = await demBuf(z, x, y, signal);
+  const bmp = await createImageBitmap(new Blob([buf], { type:'image/png' }), { premultiplyAlpha:'none', colorSpaceConversion:'none' });
+  const c = makeCanvas(256, 256), g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(bmp, 0, 0); if (bmp.close) bmp.close();
+  const im = g.getImageData(0, 0, 256, 256), d = im.data;
+  for (let i = 0; i < d.length; i += 4){
+    const e = d[i]*256 + d[i+1] + d[i+2]/256 - 32768, col = hypso(e > 0 && e < 1 ? 1 : e);
+    d[i] = col[1]; d[i+1] = col[2]; d[i+2] = col[3]; d[i+3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  return canvasBuf(c);
+}
+maplibregl.addProtocol('fox', async (params, abort) => {
+  const [kind, a, b, c] = params.url.slice(6).split('/');
+  const signal = abort && abort.signal;
+  if (kind === 'img') return { data: await canvasBuf(localImgs[a]) };
+  if (kind === 'dem') return { data: await demBuf(+a, +b, +c, signal) };
+  return { data: await baseTile(+a, +b, +c, signal) };
+});
+const LOCAL_DEM = { type:'raster-dem', tiles:['fox://dem/{z}/{x}/{y}'], encoding:'terrarium', tileSize:256, minzoom:5, maxzoom:9, bounds:[3.6, 57.8, 9.8, 64.0], attribution:'Terrain: Mapzen/AWS' };
+const noAttr = d => { const { attribution, ...rest } = d; return rest; };
+const WEB_DEM = { type:'raster-dem', tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], encoding:'terrarium', tileSize:256, maxzoom:14, attribution:'Terrain: Mapzen/AWS' };
+
 // ---------- map ----------
 const BASES = {
+  local:{ tiles:['fox://base/{z}/{x}/{y}'], minzoom:5, maxzoom:9, bounds:[3.6, 57.8, 9.8, 64.0], attribution:'Elevation colours from Mapzen/AWS terrain' },
   grey: { tiles:['https://cache.kartverket.no/v1/wmts/1.0.0/topograatone/default/webmercator/{z}/{y}/{x}.png'], attribution:'© <a href="https://www.kartverket.no/">Kartverket</a>', maxzoom:18 },
   topo: { tiles:['https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png'], attribution:'© <a href="https://www.kartverket.no/">Kartverket</a>', maxzoom:18 },
   sat:  { tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], attribution:'Imagery © Esri, Maxar, Earthstar Geographics', maxzoom:18 }
@@ -439,9 +502,9 @@ const map = new maplibregl.Map({
   style: {
     version: 8,
     sources: {
-      base: { type:'raster', tileSize:256, ...BASES.grey },
-      dem: { type:'raster-dem', tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], encoding:'terrarium', tileSize:256, maxzoom:14, attribution:'Terrain: Mapzen/AWS' },
-      hs: { type:'raster-dem', tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], encoding:'terrarium', tileSize:256, maxzoom:14 }
+      base: { type:'raster', tileSize:256, ...BASES.local },
+      dem: { ...LOCAL_DEM },
+      hs: noAttr(LOCAL_DEM)
     },
     layers: [
       { id:'bg', type:'background', paint:{ 'background-color':'#0d1117' } },
@@ -476,6 +539,45 @@ $('#base').onchange = () => {
   map.addLayer({ id:'base', type:'raster', source:'base' }, layers[idx+1]);
   applyBasemapLook();
 };
+
+// Outside map servers: use them when this page is allowed to reach them.
+function probeImage(url, ms = 5000){
+  return new Promise(res => {
+    const img = new Image(), t = setTimeout(() => res(false), ms);
+    img.onload = () => { clearTimeout(t); res(true); }; img.onerror = () => { clearTimeout(t); res(false); };
+    img.crossOrigin = 'anonymous'; img.src = url;
+  });
+}
+function swapDem(def){
+  const had = !!map.getTerrain();
+  if (had) map.setTerrain(null);
+  const layers = map.getStyle().layers.map(l => l.id), idx = layers.indexOf('hillshade');
+  map.removeLayer('hillshade'); map.removeSource('hs'); map.removeSource('dem');
+  map.addSource('dem', { ...def }); map.addSource('hs', noAttr(def));
+  map.addLayer({ id:'hillshade', type:'hillshade', source:'hs', paint:{ 'hillshade-exaggeration':.35, 'hillshade-shadow-color':'#000', 'hillshade-highlight-color':'#fff' } }, layers[idx+1]);
+  if (had) map.setTerrain({ source:'dem', exaggeration: 1.5 });
+}
+async function goOnline(){
+  const [kv, sat, dem] = await Promise.all([
+    probeImage('https://cache.kartverket.no/v1/wmts/1.0.0/topograatone/default/webmercator/6/33/17.png'),
+    probeImage('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/6/17/33'),
+    probeImage('https://s3.amazonaws.com/elevation-tiles-prod/terrarium/6/33/17.png')
+  ]);
+  const opt = v => $('#base').querySelector(`option[value="${v}"]`);
+  const label = { grey:'Kartverket grey', topo:'Kartverket topo', sat:'Satellite' };
+  for (const v of ['grey','topo','sat']){
+    const ok = v === 'sat' ? sat : kv;
+    opt(v).disabled = !ok; opt(v).textContent = label[v] + (ok ? '' : ' (blocked here)');
+  }
+  const whenReady = f => map.loaded() ? f() : map.once('load', f);
+  whenReady(() => {
+    if (dem) swapDem(WEB_DEM);
+    if (kv && $('#base').value === 'local'){ $('#base').value = 'grey'; $('#base').onchange(); }
+  });
+  online = kv;
+}
+let online = false;
+goOnline();
 
 async function loadData(){
   const [meta, buf, sight, arctic, counties, region] = await Promise.all([
@@ -725,12 +827,41 @@ function renderResults(){
 }
 $('#radius').oninput = e => { state.radius = +e.target.value; $('#radiusV').textContent = state.radius + ' km'; if (state.loc) rank(); };
 
-// ---------- geocoding (Kartverket stedsnavn) ----------
+// ---------- geocoding: built-in place list, plus Kartverket stedsnavn when reachable ----------
+let PLACES = null;
+const geoOK = fetch('https://ws.geonorge.no/stedsnavn/v1/sprak').then(r => r.ok, () => false);
+const placesP = fetch('data/places.json').then(r => r.json()).then(d => {
+  PLACES = d.p.map(([n, t, k, x, y]) => ({ n, t: d.t[t], k: d.k[k], ll: [x, y], f: fold(n) }));
+}).catch(() => { PLACES = []; });
+function fold(s){ return s.toLowerCase().replace(/æ/g, 'ae').replace(/[øö]/g, 'o').replace(/[åä]/g, 'a').normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+const TYPE_RANK = { 'By':0, 'Tettsted':1, 'Kommune':2, 'Bygdelag (bygd)':3, 'Tettsteddel':4, 'Grend':5, 'Turisthytte':6, 'Fjell':7, 'Fjord':8, 'Innsjø':8, 'Dal':9, 'Øy i sjø':9, 'Halvøy i sjø':10, 'Seter/støl':10, 'Vidde':10, 'Skog':11 };
+function localSearch(q){
+  if (!PLACES) return [];
+  const f = fold(q), out = [];
+  for (const p of PLACES){
+    const i = p.f.indexOf(f); if (i < 0) continue;
+    const word = i === 0 ? 0 : /[\s-]/.test(p.f[i-1]) ? 1 : 2;
+    out.push({ p, sc: word*20 + (p.f === f ? -10 : 0) + (TYPE_RANK[p.t] ?? 12) + p.f.length/40 });
+  }
+  out.sort((a, b) => a.sc - b.sc);
+  return out.map(x => x.p);
+}
+function nearestPlace(ll, maxKm = 6){
+  if (!PLACES || !PLACES.length) return null;
+  let best = null, bd = Infinity;
+  for (const p of PLACES){
+    if (/Øy i sjø|Halvøy|Fjord|Kommune/.test(p.t)) continue;
+    const d = hav(ll, p.ll) + (TYPE_RANK[p.t] ?? 12)*.08;
+    if (d < bd){ bd = d; best = p; }
+  }
+  return best && bd < maxKm ? `${best.n} (${best.t.toLowerCase()})` : null;
+}
 const nameCache = new Map();
 async function reverseName(ll, rad = 3000){
   const key = ll[0].toFixed(3) + ',' + ll[1].toFixed(3);
   if (nameCache.has(key)) return nameCache.get(key);
   try {
+    if (!(await geoOK)) throw new Error('offline');
     const r = await fetch(`https://ws.geonorge.no/stedsnavn/v1/punkt?nord=${ll[1]}&ost=${ll[0]}&koordsys=4326&radius=${rad}&treffPerSide=15&utkoordsys=4326`);
     const d = await r.json();
     const pref = ['By','Tettsted','Bygd','Grend','Gard','Bruk (gardsbruk)','Seter/stol','Dal','Vatn','Innsjø','Skog','Myr','Fjell','Ås','Høyde','Nes','Vik','Eid'];
@@ -739,7 +870,7 @@ async function reverseName(ll, rad = 3000){
     list.sort((a, b) => (pref.indexOf(a.t) < 0 ? 99 : pref.indexOf(a.t)) + a.m/800 - ((pref.indexOf(b.t) < 0 ? 99 : pref.indexOf(b.t)) + b.m/800));
     const n = list[0] ? `${list[0].n} (${list[0].t.toLowerCase()})` : null;
     nameCache.set(key, n); return n;
-  } catch(e){ return null; }
+  } catch(e){ await placesP; const n = nearestPlace(ll, rad/1000 + 2); nameCache.set(key, n); return n; }
 }
 let sugT = null, sugItems = [], sugIdx = -1;
 $('#q').addEventListener('input', e => {
@@ -748,17 +879,29 @@ $('#q').addEventListener('input', e => {
   const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)\s*$/);
   if (m){ let a = +m[1], b = +m[2]; if (a < 20 && b > 50) [a, b] = [b, a]; showSuggest([{ n: `Coordinates ${a}, ${b}`, s: 'Go to this point', ll: [b, a] }]); return; }
   if (q.length < 2){ hideSuggest(); return; }
+  const shape = x => ({ n: x.n, s: `${x.t} · ${x.k}`, ll: x.ll });
+  const inRegion = x => x.ll[0] && grid.reason && cellOf(x.ll[0], x.ll[1]) >= 0 && grid.reason[cellOf(x.ll[0], x.ll[1])] !== 0;
+  let localItems = [];
   sugT = setTimeout(async () => {
+    await placesP;
+    localItems = localSearch(q).filter(inRegion).slice(0, 8);
+    if (localItems.length) showSuggest(localItems.map(shape));
     try {
+      if (!(await geoOK)) throw new Error('offline');
       const r = await fetch(`https://ws.geonorge.no/stedsnavn/v1/navn?sok=${encodeURIComponent(q)}*&fuzzy=false&treffPerSide=40&utkoordsys=4326`);
       const d = await r.json();
       const rank = { 'By':0, 'Tettsted':1, 'Kommune':2, 'Bygd':3, 'Tettsteddel':4, 'Grend':5 };
       let items = (d.navn || []).map(n => ({ n: n.skrivemåte, t: n.navneobjekttype, k: n.kommuner?.[0]?.kommunenavn || '', ll: [n.representasjonspunkt?.øst, n.representasjonspunkt?.nord] }))
         .filter(x => x.ll[0] && cellOf(x.ll[0], x.ll[1]) >= 0 && grid.reason[cellOf(x.ll[0], x.ll[1])] !== 0);
       items.sort((a, b) => (rank[a.t] ?? 9) - (rank[b.t] ?? 9));
+      items = [...localItems, ...items];
       const seen = new Set(); items = items.filter(x => { const k = x.n + x.k; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8);
-      showSuggest(items.length ? items.map(x => ({ n: x.n, s: `${x.t} · ${x.k}`, ll: x.ll })) : [{ n: 'No match in Vestlandet', s: 'Try a nearby town or paste coordinates', ll: null }]);
-    } catch(e){ showSuggest([{ n: 'Place search unavailable', s: 'Click on the map or use GPS instead', ll: null }]); }
+      if ($('#q').value.trim() !== q) return;
+      showSuggest(items.length ? items.map(shape) : [{ n: 'No match in Vestlandet', s: 'Try a nearby town or paste coordinates', ll: null }]);
+    } catch(e){
+      if ($('#q').value.trim() !== q) return;
+      if (!localItems.length) showSuggest([{ n: 'No match in Vestlandet', s: 'Try a nearby town, or click the map', ll: null }]);
+    }
   }, 220);
 });
 $('#q').addEventListener('keydown', e => {
@@ -784,14 +927,14 @@ function pick(x){
   if (window.innerWidth <= 820) $('#panel').classList.remove('min');
 }
 $('#gps').onclick = () => {
-  if (!navigator.geolocation){ alert('Geolocation not available in this browser.'); return; }
+  if (!navigator.geolocation){ toast('Location is not available here. Type a place name or click the map instead.'); return; }
   $('#gps').disabled = true;
   navigator.geolocation.getCurrentPosition(p => {
     $('#gps').disabled = false;
     const ll = [p.coords.longitude, p.coords.latitude];
     setLocation(ll, 'My location'); map.flyTo({ center: ll, zoom: 10 });
     reverseName(ll).then(n => { if (n){ state.locName = 'Near ' + n; $('#hereName').textContent = state.locName; } });
-  }, err => { $('#gps').disabled = false; alert('Could not get your location: ' + err.message); }, { enableHighAccuracy: true, timeout: 12000 });
+  }, err => { $('#gps').disabled = false; toast('Could not get your location (' + err.message + '). Type a place name or click the map instead.'); }, { enableHighAccuracy: true, timeout: 12000 });
 };
 
 // ---------- popups ----------
