@@ -19,11 +19,11 @@ Open `index.html` over HTTP (GitHub Pages or `python3 -m http.server`). It's a s
 `tools/` rebuilds `data/`:
 1. `fetch.py`: downloads GBIF occurrences (red fox 5219243, arctic fox 5219303) for the area.
 2. `dem.py`: builds an elevation mosaic from AWS Terrain Tiles (terrarium, z9 ≈ 150 m).
-3. `build.py`: county polygons from Kartverket kommuneinfo (`fylke11.json`, `fylke46.json`, `fylke15.json`) → grid → `data/*.json` and `grid.bin`.
+3. `build.py`: county polygons from Kartverket kommuneinfo (`fylke11.json`, `fylke46.json`, `fylke15.json`) → grid → `data/*.json` and `grid.b64.txt` (base64 of the grid).
 
 The score multiplies **habitat** (elevation, slope, land share), **evidence** (a sighting kernel density with σ≈3.5 km, weighted toward the selected month and blended with the all-year density), a **seasonal elevation shift** (winter pushes foxes below the snow line) and a **visibility** factor (mating Jan–Mar, cubs Jun–Jul, and monthly record counts).
 
-`grid.bin` layout (uint8, row-major, north→south rows equally spaced in Web Mercator): `reason[N] | county[N] | elev/10[N] | score[12][N]`. Reason: 0 = outside, 1 = water, 2 = ice/high alpine, 3 = land.
+`grid.b64.txt` (base64 of the grid) layout (uint8, row-major, north→south rows equally spaced in Web Mercator): `reason[N] | county[N] | elev/10[N] | score[12][N]`. Reason: 0 = outside, 1 = water, 2 = ice/high alpine, 3 = land.
 
 Limits: sightings follow where people are, lakes aren't masked, and the index is relative, not a probability.
 
