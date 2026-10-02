@@ -1,4 +1,7 @@
-const CACHE = "hours-v1";
+// Every hours cache name starts with this. Cache Storage is shared by all the apps on bitrazor.github.io
+// (/meal-week/, /training/, ...), so cleanup must stay inside this prefix and never touch their caches.
+const CACHE_PREFIX = "hours-";
+const CACHE = CACHE_PREFIX + "v1";
 const ASSETS = [
   "./",
   "./index.html",
@@ -17,7 +20,7 @@ self.addEventListener("install", e => {
 self.addEventListener("activate", e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE && k.startsWith(CACHE_PREFIX)).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
